@@ -1,4 +1,5 @@
-#ACSPO SPT Mask Differences
+ACSPO SPT Mask Differences
+##########################
 
 This program helps visualize questionable areas within the SPT mask
 Questionable areas are defined as pixels where the ACSPO mask is labeled
