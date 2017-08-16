@@ -117,4 +117,19 @@ granule = Granule(path)
 layers = granule.get_layers()
 
 #compute connected components
-labels = measure.label(layers['questionable'],background=0)
+labels, n_lbls = measure.label(layers['questionable'],background=0, return_num=True)
+
+#compute centers of clusters and left right up and down of cluster
+centers = {}
+inds_left = {}
+inds_right = {}
+inds_down = {}
+inds_up = {}
+for lbl in range(n_lbls):
+    mask = labels == lbl
+    centers[lbl] = ndimage.measurements.center_of_mass(labels,mask)
+    inds_row, inds_col =  np.where(mask)
+    inds_left[lbl] = np.min(inds_col)
+    inds_right[lbl] =np.max(inds_col)
+    inds_up[lbl] = np.min(inds_row)
+    inds_down[lbl] = np.max(inds_row)
