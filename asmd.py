@@ -23,6 +23,7 @@ import sys
 
 import netCDF4
 from skimage import measure
+from scipy import ndimage
 import numpy as np
 from matplotlib import pyplot as plt
 """
@@ -116,4 +117,4 @@ granule = Granule(path)
 layers = granule.get_layers()
 
 #compute connected components
-labels = measure.label(layers['questionable'])
+labels = measure.label(layers['questionable'],background=0)
