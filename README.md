@@ -6,4 +6,8 @@ non-ocean while the SPT mask has labeled the pixels ocean.  These areas
 are visualized by running a connected component algorithm on the questionable
 areas and created images centered around the areas.
 
-The necessary libraries needed to run this program can be found in the file [requirements.txt]requirements.txt
+The necessary libraries needed to run this program can be found in the file [requirements.txt](requirements.txt)
+
+To run the program:
+
+`python asmd.py path-to-granule path-save-folder`
