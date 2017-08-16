@@ -7,6 +7,7 @@ are visualized by running a connected component algorithm on the questionable
 areas and created images centered around the areas.
 
 The necessary libraries needed to run this program can be found in the file [requirements.txt](requirements.txt)
+Note the program has not been tested with any other versions of the provided libraries.
 
 To run the program:
 
