@@ -7,7 +7,15 @@
    Questionable areas are defined as pixels where the ACSPO mask is labeled
    non-ocean while the SPT mask has labeled the pixels ocean.  These areas
    are visualized by running a connected component algorithm on the questionable
-   areas and created images centered around the areas."""
+   areas and created images centered around the areas.
+
+   overlay description:
+   0: spt_mask == clear & acspo_mask == clear
+   1: spt_mask == clear & acspo_mask == cloud
+   2: spt_mask == clear & acspo_mask == front
+   3: spt_mask == cloud & acspo_mask == clear
+   4: spt_mask == cloud & acspo_mask == cloud
+   5: spt_mask == cloud & acspo_mask == front"""
 
 
 import os
@@ -16,6 +24,7 @@ import sys
 import netCDF4
 from skimage import measure
 import numpy as np
+from matplotlib import pyplot as plt
 """
 Main steps:
 
@@ -58,11 +67,18 @@ class Granule(object):
 
     def	_get_acspo_cloud_mask(self, acspo_flags):
     	mask_bits = 192
-    	mask = np.bitwise_and(acspo_flags,mask_bits)
+    	mask = np.bitwise_and(acspo_flags,mask_bits).astype(bool)
     	return mask
 
     def _compute_overlay(self, acspo_mask, spt_mask):
-    	return 2*spt_mask + acspo_mask
+        overlay = np.zeros(acspo_mask.shape).astype(np.uint8)
+        overlay[(acspo_mask==0) & (spt_mask==0)] = 0 
+        overlay[(acspo_mask==0) & (spt_mask==3)] = 1
+        overlay[(acspo_mask==0) & (spt_mask==4)] = 2
+        overlay[(acspo_mask==1) & (spt_mask==0)] = 3 
+        overlay[(acspo_mask==1) & (spt_mask==3)] = 4
+        overlay[(acspo_mask==1) & (spt_mask==4)] = 5 
+    	return overlay
 
     def _compute_gradient(self, sst):
     	dX,dY = np.gradient(sst)
@@ -81,9 +97,10 @@ class Granule(object):
     	
     	acspo_flags = self._read_var('acspo_mask')
     	acspo_mask =  self._get_acspo_cloud_mask(acspo_flags)
+
     	layers['overlay'] = self._compute_overlay(acspo_mask,spt_mask)
     	layers['gradient'] = self._compute_gradient(layers['sst'])
-
+        layers['questionable'] = ((layers['overlay']==3) | (layers['overlay']== 5))
     	return layers
 
 
@@ -98,5 +115,5 @@ path = sys.argv[1]
 granule = Granule(path)
 layers = granule.get_layers()
 
-
-
+#compute connected components
+labels = measure.label(layers['questionable'])
