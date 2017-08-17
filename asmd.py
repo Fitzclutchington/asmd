@@ -60,7 +60,8 @@ class Granule(object):
         if not os.path.exists(path):
         	raise RuntimeError, "File %s does not exist" % path
         self.path = path
-        self.date_time = path.split('/')[-1][22:37]
+        self.date_time = '_'.join(path.split('_')[-3:-1])
+
         
 
     def _read_var(self, variable):
