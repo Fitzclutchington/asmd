@@ -48,12 +48,11 @@ class Granule(object):
     """A granule contains the following layers:
 
     Attributes:
-        sst: Sea surface temperature.
-        ACSPO: ACSPO cloud mask.
-        albedo: the albedo band
-        SPT_mask: the updated ACSPO clou dmask with fronts
-        gradient: gradient magnitude of the sst
-        overlay: combination of ACSPO and SPT_mask
+        path: a string of the path to the granule file
+        date_time = a string of the date and time of the granule
+        day = an boolean denoting whether the granule was taken at day or night
+        height = an integer representing the number of rows of the granule
+        width = an integer representing the number of columsn in the granule
     """
 
     def __init__(self, path):
@@ -69,10 +68,16 @@ class Granule(object):
     	data = np.squeeze(cdf[variable][:])
     	return data
 
-    def	_get_acspo_cloud_mask(self, acspo_flags):
+    def	_get_acspo_values(self, acspo_flags):
     	mask_bits = 192
+        day_bit = 2
+        land_bit = 4
+
     	mask = np.bitwise_and(acspo_flags,mask_bits).astype(bool)
-    	return mask
+        land_mask = np.bitwise_and(acspo_flags,land_bit).astype(bool)
+        self.day = np.bitwise_and(acspo_flags,day_bit).astype(bool)[0,0]
+
+    	return (mask, land_mask)
 
     def _compute_overlay(self, acspo_mask, spt_mask):
         overlay = np.zeros(acspo_mask.shape).astype(np.uint8)
@@ -95,25 +100,41 @@ class Granule(object):
             os.makedirs(save_folder)
         self.save_folder = save_folder
 
+    def _generate_land_layer(self,land_mask):
+        land = np.zeros((self.height,self.width,4))
+        r = 146/256.0
+        g = 98/256.0
+        b = 57/256.0
+        land[land_mask] = [r,g,b,1]
+        return land
+
     def get_layers(self):
     	"""open the cdf file and get the necessary variable
     	   return a dictionary with the layer names as keys and 
     	   matrices as value"""
 
     	layers = {}
-    	layers['albedo'] = self._read_var('albedo_chM10')
-    	layers['sst'] = self._read_var('sst_regression')
-    	spt_mask = self._read_var('spt_mask')
-    	layers['albedo'] = self._read_var('albedo_chM10')
-    	
-    	acspo_flags = self._read_var('acspo_mask')
-    	acspo_mask =  self._get_acspo_cloud_mask(acspo_flags)
+        acspo_flags = self._read_var('acspo_mask')
+        self.height, self.width = acspo_flags.shape
+        acspo_mask, land_mask =  self._get_acspo_values(acspo_flags)
 
+        layers['land'] = self._generate_land_layer(land_mask)
+
+    	layers['sst'] = self._read_var('sst_regression')
+    	
+        spt_mask = self._read_var('spt_mask')
+    	layers['spt'] = spt_mask  	
     	layers['overlay'] = self._compute_overlay(acspo_mask,spt_mask)
     	layers['gradient'] = self._compute_gradient(layers['sst'])
         layers['questionable'] = ((layers['overlay']==3) | (layers['overlay']== 5))
 
-        self.height, self.width = layers['albedo'].shape
+        if self.day:
+            layers['albedo'] = self._read_var('albedo_chM7')
+        else:
+            reference = self._read_var('sst_reynolds')
+            layers['ref_diff'] = layers['sst'] - reference
+
+        
     	return layers
 
 
@@ -121,6 +142,7 @@ def generate_saveloc(up, down, left, right, save_folder):
     crop_name = "%d_%d_%d_%d" % (up, down, left, right)
     print crop_name
     return os.path.join(save_folder,crop_name)
+
 
 
 if len(sys.argv) < 3:
@@ -184,43 +206,60 @@ for lbl in range(n_lbls):
     crop = np.s_[inds_up[lbl]:inds_down[lbl], inds_left[lbl]:inds_right[lbl]]
     saveloc = generate_saveloc(inds_up[lbl],inds_down[lbl], inds_left[lbl],inds_right[lbl], granule.save_folder)
     
-    fig = plt.figure()
-    fig.suptitle("Diagnostic at Crop\n%d : %d, %d : %d" % (inds_up[lbl],inds_down[lbl], inds_left[lbl],inds_right[lbl]))
+    fig = plt.figure(figsize=(10,6))
+    fig.suptitle("Diagnostic at Crop %d : %d, %d : %d" % (inds_up[lbl],inds_down[lbl], inds_left[lbl],inds_right[lbl]))
 
+    plt.ticklabel_format(useOffset=False)
+    vmin = 271.15 if np.nanmin(layers['sst'][crop][layers['spt'][crop]!=3]) < 271.15 else np.nanmin(layers['sst'][crop][layers['spt'][crop]!=3])
+    vmax = np.nanmax(layers['sst'][crop][layers['spt'][crop]!=3])
+
+    if abs(vmin-vmax) < 1:
+        vmin = vmin - 1
+        vmax = vmax + 1
     ax1 = plt.subplot(221)
-    ax1.set_title("Sea Surface Temperature")
+    ax1.set_title("Sea Surface Temperature", fontsize=10)
     ax1.axis('off')
-    img1 = ax1.imshow(layers['sst'][crop],vmin=271.15,vmax=307)
+    img1 = ax1.imshow(layers['sst'][crop],vmin=vmin,vmax=vmax)
+    ax1.imshow(layers['land'][crop])
     div1 = make_axes_locatable(ax1)
     cax1 = div1.append_axes("right", size="5%", pad=0.05)
     cbar1 = plt.colorbar(img1, cax=cax1)
 
-    ax2 = plt.subplot(222,sharex=ax1,sharey=ax1)
-    ax2.set_title('Albedo')
+    ax2 = plt.subplot(222)
     ax2.axis('off')
-    img1 = ax2.imshow(layers['albedo'][crop], vmin=0, vmax=10, cmap='gray')
+    if granule.day:
+        ax2.set_title('Albedo', fontsize=10)
+        img1 = ax2.imshow(layers['albedo'][crop], vmin=0, vmax=10, cmap='gray')
+    else:
+        ax2.set_title('SST - Reference', fontsize=10)
+        img1 = ax2.imshow(layers['ref_diff'][crop], vmin=-3, vmax=3)
+    ax2.imshow(layers['land'][crop])
     div1 = make_axes_locatable(ax2)
     cax1 = div1.append_axes("right", size="5%", pad=0.05)
     cbar1 = plt.colorbar(img1, cax=cax1)
 
-    ax2 = plt.subplot(223,sharex=ax1,sharey=ax1)
-    ax2.set_title('SST Gradient Magnitude')
+    ax2 = plt.subplot(223)
+    ax2.set_title('SST Gradient Magnitude', fontsize=10)
     ax2.axis('off')
     img1 = ax2.imshow(layers['gradient'][crop],vmin=0, vmax=0.5, cmap='gray')
+    ax2.imshow(layers['land'][crop])
     div1 = make_axes_locatable(ax2)
     cax1 = div1.append_axes("right", size="5%", pad=0.05)
     cbar1 = plt.colorbar(img1, cax=cax1)
 
     norm = cl.BoundaryNorm(np.arange(0,6,1),cmap_overlay.N )
     ticklabels = ['Agreed Clear' ,'SPT Cloud','Clear Front','SPT Clear', 'Agreed Cloud','Cloud Front']
-    ax2 = plt.subplot(224,sharex=ax1,sharey=ax1)
-    ax2.set_title('Questionable ')
+    ax2 = plt.subplot(224)
+    ax2.set_title('Questionable', fontsize=10)
     ax2.axis('off')
     img1 = ax2.imshow(layers['overlay'][crop],cmap=cmap_overlay,vmin=-0.5,vmax=5.5)
+    ax2.imshow(layers['land'][crop])
     div1 = make_axes_locatable(ax2)
     cax1 = div1.append_axes("right", size="5%", pad=0.05)
     cbar1 = plt.colorbar(img1, cax=cax1,ticks=np.linspace(0,5,6))
     cbar1.set_ticklabels(ticklabels)
 
-    plt.savefig(saveloc, bbox_inches='tight')
+    #plt.tight_layout()
+    plt.savefig(saveloc, bbox_layout='tight')
+    plt.savefig(saveloc)
     plt.close()
