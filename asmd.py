@@ -121,7 +121,8 @@ class Granule(object):
         layers['land'] = self._generate_land_layer(land_mask)
 
     	layers['sst'] = self._read_var('sst_regression')
-    	
+    	layers['lons'] = self._read_var('longitude')
+        layers['lats'] = self._read_var('latitude')
         spt_mask = self._read_var('spt_mask')
     	layers['spt'] = spt_mask  	
     	layers['overlay'] = self._compute_overlay(acspo_mask,spt_mask)
@@ -215,6 +216,9 @@ def generate_crop(mask):
     return (inds_up, inds_down, inds_left, inds_right)
 
 
+def generate_midpoint(ind_min, ind_max):
+    half_distance = (ind_max - ind_min)/2
+    return ind_min + half_distance
 
 
 if len(sys.argv) < 3:
@@ -247,6 +251,14 @@ for lbl in range(n_lbls):
     inds_up, inds_down, inds_left, inds_right = generate_crop(mask)
 
     crop = np.s_[inds_up:inds_down, inds_left:inds_right]
+
+    mid_ind_col = generate_midpoint(ind_left, ind_right)
+    mid_ind_row = generate_midpoint(inds_up, inds_down)
+
+    #generate lat lon ticks
+    lats = layers['lats'][:,mid_ind_col]
+    lons = layers['lons'][mid_ind_row,:]
+
     saveloc = generate_saveloc(inds_up,inds_down, inds_left,inds_right, granule.save_folder)
     
     fig = plt.figure(figsize=(11,8))
@@ -293,7 +305,7 @@ for lbl in range(n_lbls):
 
     ticklabels = ['Agreed Clear' ,'Clear Front','SPT Clear', 'Agreed Cloud','Cloud Front']
     ax2 = plt.subplot(224)
-    ax2.set_title('Questionable', fontsize=10)
+    ax2.set_title('Restored', fontsize=10)
     ax2.axis('off')
     img1 = ax2.imshow(layers['overlay'][crop],cmap=cmap_overlay,vmin=-0.5,vmax=4.5)
     ax2.imshow(layers['land'][crop])
