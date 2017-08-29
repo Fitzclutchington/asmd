@@ -220,6 +220,13 @@ def generate_midpoint(ind_min, ind_max):
     half_distance = (ind_max - ind_min)/2
     return ind_min + half_distance
 
+def generate_labels(data, ind_min , ind_max, step):
+    ax_len = ind_max - ind_min
+    if ax_len > 400:
+        step = 50
+    label_positions = np.arange(0, ax_len, step)
+    labels = ['{0:.2f}'.format(x) for x in data[ind_min:ind_max:step]]
+    return (label_positions, labels)
 
 if len(sys.argv) < 3:
 	print "usage: python asmd.py <granule_path> <save_path>"
@@ -252,12 +259,22 @@ for lbl in range(n_lbls):
 
     crop = np.s_[inds_up:inds_down, inds_left:inds_right]
 
-    mid_ind_col = generate_midpoint(ind_left, ind_right)
+    mid_ind_col = generate_midpoint(inds_left, inds_right)
     mid_ind_row = generate_midpoint(inds_up, inds_down)
 
     #generate lat lon ticks
     lats = layers['lats'][:,mid_ind_col]
     lons = layers['lons'][mid_ind_row,:]
+
+    tick_font = {'family': 'serif',
+              'size': 10,
+            }
+
+    angle = 'vertical'
+    step = 30
+    x_label_positions, x_labels_longitude = generate_labels(lons, inds_left,inds_right,step)
+    y_label_positions, y_labels_latitude = generate_labels(lats, inds_up,inds_down,step)
+   
 
     saveloc = generate_saveloc(inds_up,inds_down, inds_left,inds_right, granule.save_folder)
     
@@ -274,9 +291,11 @@ for lbl in range(n_lbls):
 
     ax1 = plt.subplot(221)
     ax1.set_title("Sea Surface Temperature", fontsize=10)
-    ax1.axis('off')
     img1 = ax1.imshow(layers['sst'][crop],vmin=vmin,vmax=vmax)
     ax1.imshow(layers['land'][crop])
+    ax1.set_yticks(y_label_positions)
+    ax1.set_yticklabels(y_labels_latitude,fontdict=tick_font)
+    ax1.set_xticks([])
     div1 = make_axes_locatable(ax1)
     cax1 = div1.append_axes("right", size="5%", pad=0.05)
     cbar1 = plt.colorbar(img1, cax=cax1)
@@ -296,7 +315,11 @@ for lbl in range(n_lbls):
 
     ax2 = plt.subplot(223)
     ax2.set_title('SST Gradient Magnitude', fontsize=10)
-    ax2.axis('off')
+    ax2.set_xticks(x_label_positions)
+    ax2.set_xticklabels(x_labels_longitude,fontdict=tick_font, rotation=angle)
+    ax2.set_yticks(y_label_positions)
+    ax2.set_yticklabels(y_labels_latitude,fontdict=tick_font)
+    #ax2.axis('off')
     img1 = ax2.imshow(layers['gradient'][crop],vmin=0, vmax=0.5, cmap='gray')
     ax2.imshow(layers['land'][crop])
     div1 = make_axes_locatable(ax2)
@@ -306,7 +329,9 @@ for lbl in range(n_lbls):
     ticklabels = ['Agreed Clear' ,'Clear Front','SPT Clear', 'Agreed Cloud','Cloud Front']
     ax2 = plt.subplot(224)
     ax2.set_title('Restored', fontsize=10)
-    ax2.axis('off')
+    ax2.set_xticks(x_label_positions)
+    ax2.set_xticklabels(x_labels_longitude,fontdict=tick_font, rotation=angle)
+    ax2.set_yticks([])
     img1 = ax2.imshow(layers['overlay'][crop],cmap=cmap_overlay,vmin=-0.5,vmax=4.5)
     ax2.imshow(layers['land'][crop])
     div1 = make_axes_locatable(ax2)
