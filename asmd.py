@@ -157,6 +157,17 @@ def add_offset(ind, offset ,  alt, max_val):
             ind = alt
     return ind
 
+def generate_bounding_box(mask):
+    inds_row, inds_col =  np.where(mask)
+    
+    inds_left = np.min(inds_col)
+    inds_right =np.max(inds_col)
+    inds_up = np.min(inds_row)
+    inds_down = np.max(inds_row)
+
+
+    return (inds_up, inds_down, inds_left, inds_right)
+
 def generate_crop(mask):
     min_height = 400
     min_width = 400
@@ -228,6 +239,26 @@ def generate_labels(data, ind_min , ind_max, step):
     labels = ['{0:.2f}'.format(x) for x in data[ind_min:ind_max:step]]
     return (label_positions, labels)
 
+def in_crops(bounding_box, crops):
+
+    if len(crops) == 0:
+        return False
+
+    for crop in crops:
+        crop_up = crop[0].start
+        crop_down = crop[0].stop
+        crop_left = crop[1].start
+        crop_right = crop[1].stop
+        cluster_up = bounding_box[0]
+        cluster_down = bounding_box[1]
+        cluster_left = bounding_box[2]
+        cluster_right = bounding_box[3]
+        if (crop_up < cluster_up) and (crop_down > cluster_down) and (crop_left < cluster_left) and (crop_right > cluster_right):
+            return True
+        else:
+            return False
+
+
 if len(sys.argv) < 3:
 	print "usage: python asmd.py <granule_path> <save_path>"
 	sys.exit()
@@ -251,93 +282,99 @@ centers = {}
 
 
 padding = 50
+tick_font = {'family': 'serif',
+              'size': 10,
+            }
+
+angle = 'vertical'
+step = 30
+crops = []
+
 for lbl in range(n_lbls):
     mask = labels == lbl
     centers[lbl] = ndimage.measurements.center_of_mass(labels,mask)
     
     inds_up, inds_down, inds_left, inds_right = generate_crop(mask)
+    bounding_box = generate_bounding_box(mask)
 
     crop = np.s_[inds_up:inds_down, inds_left:inds_right]
 
-    mid_ind_col = generate_midpoint(inds_left, inds_right)
-    mid_ind_row = generate_midpoint(inds_up, inds_down)
+    if not in_crops(bounding_box, crops):
 
-    #generate lat lon ticks
-    lats = layers['lats'][:,mid_ind_col]
-    lons = layers['lons'][mid_ind_row,:]
+        crops.append(crop)
+        mid_ind_col = generate_midpoint(inds_left, inds_right)
+        mid_ind_row = generate_midpoint(inds_up, inds_down)
 
-    tick_font = {'family': 'serif',
-              'size': 10,
-            }
+        #generate lat lon ticks
+        lats = layers['lats'][:,mid_ind_col]
+        lons = layers['lons'][mid_ind_row,:]
 
-    angle = 'vertical'
-    step = 30
-    x_label_positions, x_labels_longitude = generate_labels(lons, inds_left,inds_right,step)
-    y_label_positions, y_labels_latitude = generate_labels(lats, inds_up,inds_down,step)
-   
+        x_label_positions, x_labels_longitude = generate_labels(lons, inds_left,inds_right,step)
+        y_label_positions, y_labels_latitude = generate_labels(lats, inds_up,inds_down,step)
+       
 
-    saveloc = generate_saveloc(inds_up,inds_down, inds_left,inds_right, granule.save_folder)
-    
-    fig = plt.figure(figsize=(11,8))
-    fig.suptitle("Diagnostic at Crop %d : %d, %d : %d" % (inds_up,inds_down, inds_left,inds_right))
+        saveloc = generate_saveloc(inds_up,inds_down, inds_left,inds_right, granule.save_folder)
+        
+        fig = plt.figure(figsize=(11,8))
+        fig.suptitle("Diagnostic at Crop %d : %d, %d : %d" % (inds_up,inds_down, inds_left,inds_right))
 
-    plt.ticklabel_format(useOffset=False)
-    vmin = 271.15 if np.nanmin(layers['sst'][crop][layers['spt'][crop]!=3]) < 271.15 else np.nanmin(layers['sst'][crop][layers['spt'][crop]!=3])
-    vmax = np.nanmax(layers['sst'][crop][layers['spt'][crop]!=3])
+        plt.ticklabel_format(useOffset=False)
+        vmin = 271.15 if np.nanmin(layers['sst'][crop][layers['spt'][crop]!=3]) < 271.15 else np.nanmin(layers['sst'][crop][layers['spt'][crop]!=3])
+        vmax = np.nanmax(layers['sst'][crop][layers['spt'][crop]!=3])
 
-    if abs(vmin-vmax) < 1:
-        vmin = vmin - 1
-        vmax = vmax + 1
+        if abs(vmin-vmax) < 1:
+            vmin = vmin - 1
+            vmax = vmax + 1
 
-    ax1 = plt.subplot(221)
-    ax1.set_title("Sea Surface Temperature", fontsize=10)
-    img1 = ax1.imshow(layers['sst'][crop],vmin=vmin,vmax=vmax)
-    ax1.imshow(layers['land'][crop])
-    ax1.set_yticks(y_label_positions)
-    ax1.set_yticklabels(y_labels_latitude,fontdict=tick_font)
-    ax1.set_xticks([])
-    div1 = make_axes_locatable(ax1)
-    cax1 = div1.append_axes("right", size="5%", pad=0.05)
-    cbar1 = plt.colorbar(img1, cax=cax1)
+        ax1 = plt.subplot(221)
+        ax1.set_title("Sea Surface Temperature", fontsize=10)
+        img1 = ax1.imshow(layers['sst'][crop],vmin=vmin,vmax=vmax)
+        ax1.imshow(layers['land'][crop])
+        ax1.set_yticks(y_label_positions)
+        ax1.set_yticklabels(y_labels_latitude,fontdict=tick_font)
+        ax1.set_xticks([])
+        div1 = make_axes_locatable(ax1)
+        cax1 = div1.append_axes("right", size="5%", pad=0.05)
+        cbar1 = plt.colorbar(img1, cax=cax1)
 
-    ax2 = plt.subplot(222)
-    ax2.axis('off')
-    if granule.day:
-        ax2.set_title('Albedo', fontsize=10)
-        img1 = ax2.imshow(layers['albedo'][crop], vmin=0, vmax=10, cmap='gray')
-    else:
-        ax2.set_title('SST - Reference', fontsize=10)
-        img1 = ax2.imshow(layers['ref_diff'][crop], vmin=-3, vmax=3)
-    ax2.imshow(layers['land'][crop])
-    div1 = make_axes_locatable(ax2)
-    cax1 = div1.append_axes("right", size="5%", pad=0.05)
-    cbar1 = plt.colorbar(img1, cax=cax1)
+        ax2 = plt.subplot(222)
+        ax2.axis('off')
+        if granule.day:
+            ax2.set_title('Albedo', fontsize=10)
+            img1 = ax2.imshow(layers['albedo'][crop], vmin=0, vmax=10, cmap='gray')
+        else:
+            ax2.set_title('SST - Reference', fontsize=10)
+            img1 = ax2.imshow(layers['ref_diff'][crop], vmin=-3, vmax=3)
+        ax2.imshow(layers['land'][crop])
+        div1 = make_axes_locatable(ax2)
+        cax1 = div1.append_axes("right", size="5%", pad=0.05)
+        cbar1 = plt.colorbar(img1, cax=cax1)
 
-    ax2 = plt.subplot(223)
-    ax2.set_title('SST Gradient Magnitude', fontsize=10)
-    ax2.set_xticks(x_label_positions)
-    ax2.set_xticklabels(x_labels_longitude,fontdict=tick_font, rotation=angle)
-    ax2.set_yticks(y_label_positions)
-    ax2.set_yticklabels(y_labels_latitude,fontdict=tick_font)
-    #ax2.axis('off')
-    img1 = ax2.imshow(layers['gradient'][crop],vmin=0, vmax=0.5, cmap='gray')
-    ax2.imshow(layers['land'][crop])
-    div1 = make_axes_locatable(ax2)
-    cax1 = div1.append_axes("right", size="5%", pad=0.05)
-    cbar1 = plt.colorbar(img1, cax=cax1)
+        ax2 = plt.subplot(223)
+        ax2.set_title('SST Gradient Magnitude', fontsize=10)
+        ax2.set_xticks(x_label_positions)
+        ax2.set_xticklabels(x_labels_longitude,fontdict=tick_font, rotation=angle)
+        ax2.set_yticks(y_label_positions)
+        ax2.set_yticklabels(y_labels_latitude,fontdict=tick_font)
+        #ax2.axis('off')
+        img1 = ax2.imshow(layers['gradient'][crop],vmin=0, vmax=0.5, cmap='gray')
+        ax2.imshow(layers['land'][crop])
+        div1 = make_axes_locatable(ax2)
+        cax1 = div1.append_axes("right", size="5%", pad=0.05)
+        cbar1 = plt.colorbar(img1, cax=cax1)
 
-    ticklabels = ['Agreed Clear' ,'Clear Front','SPT Clear', 'Agreed Cloud','Cloud Front']
-    ax2 = plt.subplot(224)
-    ax2.set_title('Restored', fontsize=10)
-    ax2.set_xticks(x_label_positions)
-    ax2.set_xticklabels(x_labels_longitude,fontdict=tick_font, rotation=angle)
-    ax2.set_yticks([])
-    img1 = ax2.imshow(layers['overlay'][crop],cmap=cmap_overlay,vmin=-0.5,vmax=4.5)
-    ax2.imshow(layers['land'][crop])
-    div1 = make_axes_locatable(ax2)
-    cax1 = div1.append_axes("right", size="5%", pad=0.05)
-    cbar1 = plt.colorbar(img1, cax=cax1,ticks=np.linspace(0,4,5))
-    cbar1.set_ticklabels(ticklabels)
+        ticklabels = ['Agreed Clear' ,'Clear Front','SPT Clear', 'Agreed Cloud','Cloud Front']
+        ax2 = plt.subplot(224)
+        ax2.set_title('Restored', fontsize=10)
+        ax2.set_xticks(x_label_positions)
+        ax2.set_xticklabels(x_labels_longitude,fontdict=tick_font, rotation=angle)
+        ax2.set_yticks([])
+        img1 = ax2.imshow(layers['overlay'][crop],cmap=cmap_overlay,vmin=-0.5,vmax=4.5)
+        ax2.imshow(layers['land'][crop])
+        div1 = make_axes_locatable(ax2)
+        cax1 = div1.append_axes("right", size="5%", pad=0.05)
+        cbar1 = plt.colorbar(img1, cax=cax1,ticks=np.linspace(0,4,5))
+        cbar1.set_ticklabels(ticklabels)
 
-    plt.savefig(saveloc)
-    plt.close()
+        plt.savefig(saveloc)
+        plt.close()
