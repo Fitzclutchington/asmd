@@ -23,7 +23,7 @@ import sys
 
 import netCDF4
 from skimage import measure
-from scipy import ndimage
+from scipy import ndimage, signal
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib import colors as cl
@@ -43,6 +43,18 @@ Main steps:
 6) set colors for ocean, front, restored, and questionable
 7) display albedo,(if available), sst, grdient, overlay for each cluster with cluster in center
 """
+
+def gradient(img):
+    h = np.array([0.036420, 0.248972, 0.429217, 0.248972, 0.036420])
+    hp = np.array([0.108415, 0.280353, 0, -0.280353, -0.108415])
+
+    img = np.pad(img, 2, mode='reflect')
+    mode = 'valid'
+    dX = signal.convolve(signal.convolve(img, hp[:,np.newaxis], mode=mode),
+    h[np.newaxis,:], mode=mode)
+    dY = signal.convolve(signal.convolve(img, h[:,np.newaxis], mode=mode),
+    hp[np.newaxis,:], mode=mode)
+    return dX, dY
 
 class Granule(object):
     """A granule contains the following layers:
@@ -90,7 +102,7 @@ class Granule(object):
     	return overlay
 
     def _compute_gradient(self, sst):
-    	dX,dY = np.gradient(sst)
+    	dX,dY = gradient(sst)
     	return np.sqrt(dX**2 + dY**2)
 
     def generate_save_folder(self,loc):
